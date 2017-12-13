@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, TupleSections,
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, TupleSections, TypeFamilies,
              DeriveGeneric, ExtendedDefaultRules, FlexibleContexts#-}
 
 module Youido.Authentication where
@@ -13,13 +13,16 @@ import Data.Text (Text, pack, unpack)
 import System.Random
 import Text.Read (readMaybe)
 import Data.Proxy
+import Data.Dynamic
+import qualified Data.Map.Strict as Map
 
 --------------------------------------------------------------------------
 --- TYPES
 --------------------------------------------------------------------------
   
 class Authenticate u where
-  notPresent :: Proxy u -> Text
+  type AuthRoute u
+  notPresent :: Proxy u -> Maybe (AuthRoute u)
   
 data Auth u a = Auth u a
 {-
@@ -33,7 +36,16 @@ instance (FromRequest a, Authenticate u) => FromRequest (Auth u a) where
 --------------------------------------------------------------------------
 --- SERVING
 --------------------------------------------------------------------------
-  
+
+insertSessionValue :: TVar (Data.IntMap.IntMap a) -> a -> ActionM ()
+insertSessionValue sessions kv = do
+      msess <- lookupSession sessions
+      case msess of
+        Nothing -> if null users then go (Map.empty) else redirect "/login"
+        Just (i,u) -> go u
+
+
+
 
 newSession :: TVar (Data.IntMap.IntMap a) -> a -> ActionM ()
 newSession tv email = do

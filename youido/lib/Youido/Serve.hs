@@ -15,6 +15,7 @@ import Lucid.Bootstrap3
 import qualified Lucid.Rdash as RD
 import Control.Concurrent.STM
 import qualified Data.IntMap
+import qualified Data.Map.Strict as Map
 import Data.Text (Text, pack, unpack)
 import Data.Monoid
 import Control.Monad.State.Strict hiding (get)
@@ -37,7 +38,7 @@ serve x y@(Youido _ _ _ users port') = do
   sessions <- newTVarIO (Data.IntMap.empty)
   scotty port' $ do
     middleware $ logStdout
-    get "/login" $ do
+    {-get "/login" $ do
       html $ renderText $ loginPage Nothing
     get "/logout" $ do
       msess <- lookupSession sessions
@@ -53,19 +54,22 @@ serve x y@(Youido _ _ _ users port') = do
       case lookup femail users of
         Nothing -> html incorrect
         Just passwd | passwd == fpasswd -> newSession sessions femail >> redirect "/"
-                    | otherwise -> html incorrect
+                    | otherwise -> html incorrect -}
     matchAny (regex "/*") $ do
       let go email = do
             rq <- request
             pars <- params
             --liftIO $ print ("got request", rq)
-            Response stat hdrs conts <- liftIO $ runReaderT (run y (rq, pars,email)) x
+            Response stat hdrs conts mnewVal <- liftIO $ runReaderT (run y (rq, pars,email)) x
             status stat
+            case mnewVal of
+              Just kd -> insertSessionValue sessions kd
+              Nothing-> return()
             mapM_ (uncurry setHeader) hdrs
             raw conts
       msess <- lookupSession sessions
       case msess of
-        Nothing -> if null users then go "" else redirect "/login"
+        Nothing -> if null users then go (Map.empty) else redirect "/login"
         Just (i,u) -> go u
 
 

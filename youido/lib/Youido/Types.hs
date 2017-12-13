@@ -8,6 +8,7 @@ import Network.Wai hiding (Response)
 import Data.Text (Text, pack)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Encoding as T
+import Data.Map.Strict (Map)
 import Control.Monad.State.Strict
 import Data.Monoid
 import GHC.TypeLits
@@ -23,6 +24,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Network.Wai.Parse
 import Lens.Micro.Platform
 import Control.Monad.Trans
+import Data.Dynamic
 
 --------------------------------------------------------------------------
 ---                 RESPONSES
@@ -34,6 +36,7 @@ data Response = Response
   { code :: Status -- ^ http status
   , headers :: [(TL.Text, TL.Text)]
   , contents:: LBS.ByteString
+  , newSessionVal :: Maybe (Text, Dynamic)
   }
 
 -- types that can be converted to a response: e.g. HTML and JSON
@@ -49,6 +52,7 @@ instance ToResponse (Html ()) where
   toResponse h = Response ok200
                           [("Content-Type", "text/html; charset=utf-8")]
                           (renderBS h)
+                          Nothing
   wrapHtml wrapper x = wrapper x
 
 data MAjax a = Ajax a | NoAjax a
@@ -60,6 +64,7 @@ instance ToResponse (MAjax (Html ())) where
   toResponse (h) = Response ok200
                           [("Content-Type", "text/html; charset=utf-8")]
                           (renderBS $ unMAjax h)
+                          Nothing
   wrapHtml _ (Ajax x) = Ajax x
   wrapHtml wrapper (NoAjax x) = NoAjax $ wrapper x
 
@@ -67,6 +72,8 @@ instance ToResponse Value where
   toResponse v = Response ok200
                           [("Content-Type", "application/json; charset=utf-8")]
                           (encode v)
+                          Nothing
+                          
 
 newtype Javascript = JS { unJS :: LBS.ByteString }
 
@@ -74,11 +81,13 @@ instance ToResponse Javascript where
   toResponse (JS lbs) = Response ok200
                                  [("Content-Type", "application/javascript")]
                                  lbs
+                                 Nothing
 
 instance ToResponse Text where
   toResponse t = Response ok200
                           [("Content-Type", "text/plain; charset=utf-8")]
-                          $ LBS.fromStrict $ T.encodeUtf8 t
+                          (LBS.fromStrict $ T.encodeUtf8 t)
+                          Nothing
 
 instance (ToResponse a, ToResponse b) => ToResponse (Either a b) where
   toResponse (Left x) = toResponse x
@@ -89,10 +98,11 @@ instance (ToResponse a, ToResponse b) => ToResponse (Either a b) where
 --------------------------------------------------------------------------
 
 type Email = Text
+type SessionStore = Map Text Dynamic
 
 -- types that can be parsed from a request, maybe
 class FromRequest a where
-  fromRequest :: (Request,[(TL.Text, TL.Text)], Email) -> Maybe a
+  fromRequest :: (Request,[(TL.Text, TL.Text)], SessionStore) -> Maybe a
 
 class ToURL a where
   toURL :: a -> Text
@@ -206,7 +216,7 @@ liftY mx = YouidoT (lift mx)
 -- | get a response from a request, given a list of handlers
 run :: Monad m
     => Youido m
-    -> (Request, [(TL.Text, TL.Text)],Email) -- ^ incoming request
+    -> (Request, [(TL.Text, TL.Text)], SessionStore) -- ^ incoming request
     -> m Response
 run (Youido [] notFound wrapperf _ _) _ = return $ (toResponse $ wrapHtml wrapperf notFound) { code = notFound404  }
 run (Youido (H f : hs) notFound wrapperf users p) rq = do

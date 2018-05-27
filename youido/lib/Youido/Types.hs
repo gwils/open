@@ -134,7 +134,7 @@ instance (FromForm a) => RequestInfo (Form a) where
       formResult = runPostForm <$> getState
 
       lookupPath :: [(TL.Text, TL.Text)] -> D.Path -> [D.FormInput]
-      lookupPath pars path = maybeToList $ D.TextInput <$> TL.toStrict <$> lookup (TL.fromStrict (D.fromPath path)) pars
+      lookupPath pars path = maybeToList $ D.TextInput <$> TL.toStrict <$> lookup (TL.fromStrict (D.fromPath $ tail path)) pars
 
       runPostForm :: [(TL.Text, TL.Text)] -> (View Text, Maybe a)
       runPostForm pars = runIdentity $ D.postForm "top-level-form" form (postFormHandler pars)
